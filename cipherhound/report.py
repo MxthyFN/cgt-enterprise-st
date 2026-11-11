@@ -34,11 +34,19 @@ from .storage import DEFAULT_LOG_DIR, ensure_log_dir, session_id
 
 def build_record(config: SessionConfig, gen_stats: GenerationStats,
                  analysis: PatternReport, sim: SimulationResult,
-                 when: datetime | None = None) -> Dict:
+                 when: datetime | None = None,
+                 network_sim: SimulationResult | None = None) -> Dict:
     """Assemble the full, credential-free research record for a session."""
     when = when or datetime.now()
     recs = security_recommendations(analysis, sim.match_categories)
-    return {
+    network_block = None
+    if network_sim is not None:
+        network_block = {
+            "target": f"{config.lab_host}:{config.lab_port}",
+            "target_kind": "loopback lab server (operator-run, authorized)",
+            **network_sim.to_dict(),
+        }
+    record = {
         "application": __app_name__,
         "version": __version__,
         "session_id": session_id(when),
@@ -56,11 +64,14 @@ def build_record(config: SessionConfig, gen_stats: GenerationStats,
         "elapsed_seconds": round(sim.elapsed_seconds, 3),
         "analysis": analysis.to_dict(),
         "simulation": sim.to_dict(),
+        "network_target": network_block,
         "recommendations": recs,
         "notice": ("Synthetic research artifact. Candidate values are locally "
-                   "generated test strings, not real credentials. No external "
-                   "systems were contacted."),
+                   "generated test strings. Any live testing was restricted to "
+                   "an operator-run loopback lab target; no external, public, "
+                   "or third-party systems were contacted."),
     }
+    return record
 
 
 def _secure(path: Path) -> None:
@@ -122,6 +133,19 @@ def export_txt(record: Dict, log_dir: Path = DEFAULT_LOG_DIR) -> Path:
     else:
         w("  No synthetic accounts matched.")
     w("")
+    nt = record.get("network_target")
+    if nt:
+        w("-- LIVE LAB TARGET (loopback, operator-run) --------------------------")
+        w(f"  Target               : {nt['target']} ({nt['target_kind']})")
+        w(f"  Candidates evaluated : {nt['candidates_evaluated']:,}")
+        w(f"  Accounts tested      : {nt['accounts_total']}")
+        w(f"  Accounts matched     : {nt['accounts_cracked']}")
+        w(f"  Crack rate           : {nt['crack_rate_pct']}%")
+        w(f"  Elapsed              : {nt['elapsed_seconds']}s")
+        for m in nt["matches"]:
+            w(f"    [MATCH] {m['username']:<22} via '{m['candidate']}' "
+              f"(category={m['category']}, attempt #{m['attempts_to_match']:,})")
+        w("")
     w("-- PATTERN ANALYSIS --------------------------------------------------")
     a = record["analysis"]
     w(f"  Sample size              : {a['sample_size']:,}")

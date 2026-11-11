@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Directory for research logs/exports (default ./logs).")
     p.add_argument("--seed", type=int, default=None,
                    help="Deterministic RNG seed for reproducible simulations.")
+    p.add_argument("--lab-target", default=None, metavar="IP",
+                   help="Loopback IP of a local lab auth server to test against "
+                        "(127.0.0.1 / ::1 only; domains/remote hosts refused).")
+    p.add_argument("--lab-port", type=int, default=9099, metavar="PORT",
+                   help="Port of the local lab auth server (default 9099).")
+    p.add_argument("--lab-confirm", action="store_true",
+                   help="Acknowledge you own/are authorized to test the "
+                        "loopback --lab-target (required to enable it non-"
+                        "interactively).")
     p.add_argument("--no-color", action="store_true", help="Disable ANSI colors.")
     p.add_argument("--no-animation", action="store_true",
                    help="Disable animations and live redraws.")
@@ -95,6 +104,22 @@ def main(argv=None) -> int:
             config = collect_interactive(theme)
             if args.count:
                 config.target_count = args.count
+
+        # Non-interactive / explicit CLI lab target (loopback-only, confirmed).
+        if args.lab_target:
+            from .netsim import TargetRefused, validate_loopback_target
+            try:
+                host = validate_loopback_target(args.lab_target)
+            except TargetRefused as exc:
+                theme.write(theme.red(f"  ! {exc}"))
+                return 2
+            if not args.lab_confirm:
+                theme.write(theme.red(
+                    "  ! --lab-target requires --lab-confirm to acknowledge you "
+                    "own/are authorized to test this loopback target."))
+                return 2
+            config.lab_host = host
+            config.lab_port = args.lab_port
 
         run(theme, config, log_dir=log_dir, num_accounts=args.accounts,
             seed=args.seed, show_startup=not args.no_startup)

@@ -183,6 +183,57 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(rows[0], ["section", "key", "value", "detail"])
 
 
+class NetworkLabTests(unittest.TestCase):
+    """Loopback lab-target client/server (netsim + labserver)."""
+
+    def test_loopback_validation(self):
+        from cipherhound.netsim import TargetRefused, validate_loopback_target
+        self.assertEqual(validate_loopback_target("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(validate_loopback_target("::1"), "::1")
+        self.assertEqual(validate_loopback_target("127.9.9.9"), "127.9.9.9")
+        for bad in ("8.8.8.8", "192.168.1.5", "10.0.0.1", "example.com", "", "localhost"):
+            with self.assertRaises(TargetRefused):
+                validate_loopback_target(bad)
+
+    def test_simulator_refuses_non_loopback(self):
+        from cipherhound.netsim import NetworkTargetSimulator, TargetRefused
+        with self.assertRaises(TargetRefused):
+            NetworkTargetSimulator("93.184.216.34", 9099)
+
+    def test_labserver_refuses_non_loopback_bind(self):
+        from cipherhound.labserver import create_server
+        from cipherhound.netsim import TargetRefused
+        with self.assertRaises(TargetRefused):
+            create_server(host="0.0.0.0", port=0)
+
+    def test_end_to_end_loopback_run(self):
+        import threading
+        from cipherhound.labserver import create_server
+        from cipherhound.netsim import NetworkTargetSimulator
+
+        cfg = demo_config(target_count=20_000)
+        server = create_server(host="127.0.0.1", port=0, config=cfg,
+                               num_accounts=6, seed=1)
+        host, port = server.server_address[0], server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            netsim = NetworkTargetSimulator(host, port)
+            self.assertTrue(netsim.ping())
+            users = netsim.fetch_users()
+            self.assertEqual(len(users), 6)
+            cands, _ = generate_candidates(cfg)
+            result = netsim.run(iter(cands), usernames=users)
+            self.assertEqual(result.accounts_total, 6)
+            # Weak seed-derived accounts should be matched over the socket;
+            # strong-random ones should resist.
+            self.assertGreaterEqual(result.accounts_cracked, 1)
+            self.assertLess(result.accounts_cracked, 6)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 class CollectorTests(unittest.TestCase):
     def test_split_dedup(self):
         self.assertEqual(_split("red, blue, red  green"), ["red", "blue", "green"])

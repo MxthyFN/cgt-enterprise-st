@@ -167,6 +167,7 @@ def startup_sequence(theme: Theme) -> None:
     title = f"{__app_name__} v{__version__}  ::  {__tagline__}"
     theme.write(theme.green_dim("|  ") + theme.bold(theme.green(title)))
     theme.write(theme.green_dim("|  ") + theme.white(f"An internal research platform by {__company__}"))
+    theme.write(theme.green_dim("|  ") + theme.red("** AUTHORIZED SECURITY RESEARCH TOOL **"))
     theme.write(_frame(theme))
     theme.write()
 

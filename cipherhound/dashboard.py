@@ -115,7 +115,8 @@ class Dashboard:
 
         lines.append(t.green_dim("|" + "-" * inner + "|"))
         lines.append(row(t.white("  Pattern distribution (top categories):")))
-        src = match_categories if (phase == "simulate" and match_categories) else gen.by_category
+        src = match_categories if (phase in ("simulate", "target") and match_categories) \
+            else gen.by_category
         for bar_line in category_distribution(
                 {k: v for k, v in src.items() if v}, t, inner):
             lines.append(row(bar_line))

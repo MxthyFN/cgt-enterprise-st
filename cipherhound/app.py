@@ -84,12 +84,57 @@ class ResearchApp:
         self._print_matches(result)
         return result
 
-    def _print_matches(self, result) -> None:
+    def _phase_network_target(self, config: SessionConfig,
+                              candidates: List[Tuple[str, str]],
+                              engine: PasswordEngine, dashboard: Dashboard):
+        """Run candidates against the operator's loopback lab server."""
+        from .netsim import NetworkTargetSimulator, TargetRefused
+
+        section(self.theme, "Live Lab Target (loopback-only)")
         t = self.theme
+        try:
+            netsim = NetworkTargetSimulator(config.lab_host, config.lab_port)
+        except TargetRefused as exc:
+            t.write(t.red(f"  ! {exc}"))
+            return None
+
+        t.write(t.red("  * AUTHORIZED SECURITY RESEARCH *") +
+                t.gray(f"  target {config.lab_host}:{config.lab_port} (loopback)"))
+        if not netsim.ping():
+            t.write(t.red(
+                f"  ! No lab server reachable at {config.lab_host}:{config.lab_port}."))
+            t.write(t.gray(
+                "    Start one first:  python -m cipherhound.labserver "
+                f"--port {config.lab_port}"))
+            return None
+
+        users = netsim.fetch_users()
+        t.write(t.gray(f"  Connected. Target exposes {len(users)} synthetic account(s)."))
+
+        def progress(result):
+            dashboard.render("target", engine.stats,
+                             evaluated=result.candidates_evaluated,
+                             accounts_total=result.accounts_total,
+                             matches=result.accounts_cracked,
+                             match_categories=result.match_categories)
+
+        result = netsim.run(iter(candidates), usernames=users, progress=progress)
+        dashboard.render("target", engine.stats,
+                         evaluated=result.candidates_evaluated,
+                         accounts_total=result.accounts_total,
+                         matches=result.accounts_cracked,
+                         match_categories=result.match_categories, force=True)
+        dashboard.finish()
+        self._print_matches(result, live=True)
+        return result
+
+    def _print_matches(self, result, live: bool = False) -> None:
+        t = self.theme
+        where = "lab-target accounts" if live else "synthetic accounts"
         if result.matches:
             t.write(t.green(
                 f"  >> {result.accounts_cracked}/{result.accounts_total} "
-                f"synthetic accounts matched ({result.crack_rate:.1f}% crack rate)."))
+                f"{where} matched ({result.crack_rate:.1f}% crack rate)."))
             for m in result.matches:
                 t.write("     " + t.green("[MATCH] ") +
                         t.white(f"{m.username:<20}") +
@@ -103,11 +148,11 @@ class ResearchApp:
 
     # -- reporting / summary ------------------------------------------------
 
-    def _report(self, config, engine, analysis, result):
+    def _report(self, config, engine, analysis, result, network_result=None):
         from .storage import append_history
         section(self.theme, "Research Logging & Export")
         record = build_record(config, engine.stats, analysis, result,
-                              when=datetime.now())
+                              when=datetime.now(), network_sim=network_result)
         paths = export_all(record, self.log_dir)
         append_history(record, self.log_dir)
         for fmt, path in paths.items():
@@ -150,6 +195,11 @@ class ResearchApp:
         candidates, engine = self._phase_generate(config, dashboard)
         result = self._phase_simulate(config, candidates, engine, dashboard)
 
+        network_result = None
+        if config.lab_host:
+            network_result = self._phase_network_target(
+                config, candidates, engine, dashboard)
+
         section(self.theme, "Pattern Analysis")
         self.theme.write(self.theme.gray("  Analyzing candidate structure and habits..."))
         analysis = analyze_candidates(iter(candidates))
@@ -157,7 +207,8 @@ class ResearchApp:
             f"  >> Pattern diversity {analysis.pattern_diversity:.3f}, "
             f"avg complexity {analysis.avg_complexity:.1f}/100."))
 
-        record = self._report(config, engine, analysis, result)
+        record = self._report(config, engine, analysis, result,
+                              network_result=network_result)
         self._summary(record)
         self._history()
         return record

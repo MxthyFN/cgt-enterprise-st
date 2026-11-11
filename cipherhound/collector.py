@@ -61,6 +61,12 @@ class SessionConfig:
 
     target_count: int = 100_000
 
+    # Optional loopback-only live lab target (see netsim/labserver). When set,
+    # candidates are additionally run against a local lab auth server the
+    # operator runs themselves. host is always a loopback IP or None.
+    lab_host: str | None = None
+    lab_port: int = 9099
+
     # -- helpers ------------------------------------------------------------
 
     def pattern_fields(self) -> Dict[str, List[str]]:
@@ -175,7 +181,64 @@ def collect_interactive(theme: Theme) -> SessionConfig:
             "    (No seeds supplied - loading a neutral synthetic starter set.)"))
         _apply_starter_seeds(cfg)
 
+    _collect_lab_target(theme, cfg)
     return cfg
+
+
+def _collect_lab_target(theme: Theme, cfg: SessionConfig) -> None:
+    """
+    Optionally configure a loopback-only live lab target.
+
+    This is where the operator can point the session at a local lab
+    authentication server they are running. For safety this accepts loopback
+    IP addresses ONLY (127.0.0.1 / ::1) - never domains or remote hosts - and
+    requires an explicit typed authorization confirmation.
+    """
+    from .netsim import TargetRefused, validate_loopback_target
+
+    section(theme, "Live Lab Target (optional)")
+    theme.write(theme.red("  * FOR AUTHORIZED SECURITY RESEARCH ONLY *"))
+    theme.write(theme.gray(
+        "  You may run candidates against a LOCAL lab auth server you are\n"
+        "  running yourself. Targets are restricted to loopback IPs\n"
+        "  (127.0.0.1 / ::1). Domains and remote/LAN hosts are refused."))
+    theme.write()
+
+    ans = _ask(theme, "Connect to a local lab target server now?",
+               example="y/N", optional=True)
+    if not ans.lower().startswith("y"):
+        theme.write(theme.gray("    (Skipping live target; offline simulation only.)"))
+        return
+
+    host_raw = _ask(theme, "Target IP (loopback only)", example="127.0.0.1",
+                    optional=True) or "127.0.0.1"
+    try:
+        host = validate_loopback_target(host_raw)
+    except TargetRefused as exc:
+        theme.write(theme.red(f"    ! {exc}"))
+        theme.write(theme.gray("    (Live target not configured.)"))
+        return
+
+    port_raw = _ask(theme, "Target port", example="9099", optional=True) or "9099"
+    try:
+        port = int(port_raw)
+    except ValueError:
+        theme.write(theme.red("    ! Invalid port; using 9099."))
+        port = 9099
+
+    theme.write()
+    theme.write(theme.amber(
+        f"    You are about to run candidates against {host}:{port}."))
+    theme.write(theme.gray(
+        "    Confirm you own / are authorized to test this local target."))
+    confirm = _ask(theme, "Type 'I AM AUTHORIZED' to proceed",
+                   optional=True)
+    if confirm.strip() == "I AM AUTHORIZED":
+        cfg.lab_host = host
+        cfg.lab_port = port
+        theme.write(theme.green(f"    [confirmed] live lab target set: {host}:{port}"))
+    else:
+        theme.write(theme.gray("    (Confirmation not given; live target disabled.)"))
 
 
 def _apply_starter_seeds(cfg: SessionConfig) -> None:

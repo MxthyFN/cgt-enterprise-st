@@ -37,10 +37,14 @@ passwords**.
 
 ## Safety & scope
 
-CIPHERHOUND is designed so that it **cannot** be pointed at real systems:
+CIPHERHOUND is designed so that it **cannot** be pointed at systems you don't
+control:
 
-* **Offline by construction** — the codebase opens no network sockets. There is
-  no HTTP client anywhere in the package.
+* **Loopback-only networking** — the only outbound connections the tool makes
+  are to a **loopback lab server** (`127.0.0.1` / `::1`) that *you* run. Any
+  domain or remote/public/LAN address is refused in code (see
+  [Live lab target](#live-lab-target-loopback-only)). There is no HTTP client
+  and no way to reach an external site.
 * **Synthetic data only** — inputs are fictional (favorite colors, fake
   birthdays, invented names, etc.). The interactive prompts explicitly steer
   the operator away from real credentials.
@@ -149,6 +153,9 @@ python3 -m cipherhound --history
 | `--target LABEL` | Label for the synthetic research target (demo mode). |
 | `--log-dir DIR` | Directory for logs/exports (default `./logs`). |
 | `--seed N` | Deterministic RNG seed for reproducible simulations. |
+| `--lab-target IP` | Loopback IP of a local lab auth server to test against (`127.0.0.1`/`::1` only). |
+| `--lab-port PORT` | Port of the local lab auth server (default `9099`). |
+| `--lab-confirm` | Acknowledge you own/are authorized to test the loopback target (required with `--lab-target`). |
 | `--no-color` | Disable ANSI colors. |
 | `--no-animation` | Disable animations / live redraws. |
 | `--no-startup` | Skip the animated startup sequence. |
@@ -157,6 +164,44 @@ python3 -m cipherhound --history
 
 Environment variables: `NO_COLOR` / `CIPHERHOUND_NOCOLOR` disable color;
 `CIPHERHOUND_LOG_DIR` overrides the default log directory.
+
+---
+
+## Live lab target (loopback-only)
+
+In addition to the in-memory simulation, CIPHERHOUND can run candidates against
+a **local lab authentication server over a real TCP socket** — the full "enter
+an IP, connect, and test the login" workflow.
+
+> **Safety boundary (enforced in code, not just docs):** the target must be a
+> **loopback IP** (`127.0.0.0/8` or `::1`). Domains and remote/public/LAN
+> addresses are **refused** — by `netsim.validate_loopback_target`, by the
+> `NetworkTargetSimulator` constructor, and by the lab server's own bind check.
+> This keeps live testing confined to a sandbox you run on your own machine.
+> CIPHERHOUND will not test systems it does not control.
+
+**1. Start the bundled lab server** (one terminal):
+
+```bash
+python3 -m cipherhound.labserver --port 9099 --accounts 8 --seed 1
+```
+
+It binds to `127.0.0.1` only, creates synthetic accounts (salted-hash stored,
+no plaintext), and prints the exact command to point a session at it.
+
+**2. Run a session against it** (another terminal):
+
+```bash
+python3 -m cipherhound --demo --lab-target 127.0.0.1 --lab-port 9099 --lab-confirm
+```
+
+Interactively, the setup questionnaire ends with a **Live Lab Target** step
+that asks whether to connect, takes a loopback IP and port, and requires you to
+type `I AM AUTHORIZED` before any live run. The CLI equivalent of that
+confirmation is `--lab-confirm`.
+
+Results from the live run are reported alongside the offline simulation and are
+included in the JSON/TXT research logs under `network_target`.
 
 ---
 
@@ -207,6 +252,8 @@ counters without buffering the whole candidate set twice.
 | `cipherhound/engine.py` | `PasswordEngine` — lazily synthesizes categorized candidates from fictional seeds, de-duplicates, and tracks per-category stats. |
 | `cipherhound/analysis.py` | Complexity scoring, leet/repeat/digit-run detection, pattern diversity (normalized entropy), and recommendation generation. |
 | `cipherhound/simulator.py` | `AuthSimulator` — builds synthetic salted-hash accounts and tests candidates locally; attributes matches to habits. |
+| `cipherhound/netsim.py` | Loopback-only live-target client (`NetworkTargetSimulator`) + `validate_loopback_target` enforcement. |
+| `cipherhound/labserver.py` | Bundled local lab auth server (loopback-bind only) for the live-target workflow. |
 | `cipherhound/dashboard.py` | In-place live terminal dashboard (counters, progress bar, distribution, timer) with a non-TTY fallback. |
 | `cipherhound/report.py` | Assembles the credential-free research record and writes JSON/TXT/CSV. |
 | `cipherhound/storage.py` | Local, restrictive-permission history index; never stores secrets. |
