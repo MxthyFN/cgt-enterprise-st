@@ -73,7 +73,8 @@ CIPHERHOUND is designed so that it **cannot** be pointed at real systems:
 
 ## Installation
 
-Requires **Python 3.9+**. No packages to install.
+Requires **Python 3.9+**. No packages to install. Runs on **macOS, Linux, and
+Windows**.
 
 ```bash
 git clone <this-repo>
@@ -82,6 +83,29 @@ python3 --version        # confirm 3.9+
 ```
 
 That's it — CIPHERHOUND runs directly from the source tree.
+
+### Running on macOS
+
+macOS includes `python3` once the Xcode Command Line Tools are present (run
+`xcode-select --install` once if `python3 --version` is missing). The default
+**Terminal.app** and **iTerm2** both render the ANSI colors, animated startup,
+and live dashboard correctly.
+
+```bash
+cd cgt-enterprise-st
+./run.sh --demo              # convenience launcher (chmod already set)
+# ...equivalently:
+python3 -m cipherhound --demo
+```
+
+If colors look wrong in an unusual terminal, add `--no-color` (or set
+`NO_COLOR=1`); for a static, scroll-friendly view use `--no-animation`.
+
+### Running on Windows
+
+Use **Windows Terminal** or PowerShell (both support ANSI). Run
+`python -m cipherhound --demo`. In the legacy `cmd.exe` console, pass
+`--no-animation` if the live redraw looks jumpy.
 
 ---
 
