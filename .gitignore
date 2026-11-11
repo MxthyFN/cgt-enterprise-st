@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# CIPHERHOUND research logs & exports (local-only artifacts, never committed)
+logs/*
+!logs/.gitkeep

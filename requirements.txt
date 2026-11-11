@@ -1,0 +1,6 @@
+# CIPHERHOUND has NO third-party runtime dependencies.
+# It runs on the Python 3.9+ standard library alone, by design, so that the
+# research platform is fully self-contained and local-only.
+#
+# Optional (development/testing convenience only):
+#   pytest   # the test suite also runs with the stdlib `unittest` module
